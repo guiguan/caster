@@ -26,7 +26,7 @@ go func() {
     for m := range ch {
         // do anything to the broadcasted message
     }
-}
+}()
 
 go func() {
     // subscriber #2
@@ -35,7 +35,7 @@ go func() {
     for m := range ch {
         // do anything to the broadcasted message
     }
-}
+}()
 
 go func() {
     // publisher
@@ -44,7 +44,7 @@ go func() {
     }
 
     c.Close()
-}
+}()
 ```
 
 Subscribers can join and leave at any time:
