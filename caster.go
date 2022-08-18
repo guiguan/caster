@@ -50,18 +50,7 @@ func New(ctx context.Context) *Caster {
 	}
 
 	go func() {
-		subs := map[chan interface{}]context.Context{}
-
-		checkCtx := func(sCh chan interface{}, sCtx context.Context) bool {
-			select {
-			case <-sCtx.Done():
-				delete(subs, sCh)
-				close(sCh)
-				return false
-			default:
-				return true
-			}
-		}
+		subs := make(map[chan interface{}]chan struct{})
 
 	topLoop:
 		for {
@@ -71,21 +60,13 @@ func New(ctx context.Context) *Caster {
 			case o := <-c.op:
 				switch o.operator {
 				case opPub:
-					for sCh, sCtx := range subs {
-						if !checkCtx(sCh, sCtx) {
-							continue
-						}
-
+					for sCh := range subs {
 						select {
 						case sCh <- o.operand:
 						}
 					}
 				case opTryPub:
-					for sCh, sCtx := range subs {
-						if !checkCtx(sCh, sCtx) {
-							continue
-						}
-
+					for sCh := range subs {
 						select {
 						case sCh <- o.operand:
 						default:
@@ -93,18 +74,30 @@ func New(ctx context.Context) *Caster {
 					}
 				case opSub:
 					sIn := o.operand.(subInfo)
-					subs[sIn.ch] = sIn.ctx
+					unSubCh := make(chan struct{})
+					subs[sIn.ch] = unSubCh
+					go func() {
+						select {
+						case <-sIn.ctx.Done():
+							c.Unsub(sIn.ch)
+						case <-unSubCh:
+						}
+					}()
 				case opUnsub:
 					sCh := o.operand.(chan interface{})
-					delete(subs, sCh)
-					close(sCh)
+					if unSubCh, ok := subs[sCh]; ok {
+						close(unSubCh)
+						delete(subs, sCh)
+						close(sCh)
+					}
 				case opClose:
 					break topLoop
 				}
 			}
 		}
 
-		for sCh := range subs {
+		for sCh, unSubCh := range subs {
+			close(unSubCh)
 			close(sCh)
 		}
 
@@ -148,8 +141,10 @@ func (c *Caster) Sub(ctx context.Context, capacity uint) (sCh chan interface{}, 
 	select {
 	case <-ctx.Done():
 		close(sCh)
+		ok = false
 	case <-c.done:
 		close(sCh)
+		ok = false
 	case c.op <- operation{
 		operator: opSub,
 		operand: subInfo{
@@ -158,7 +153,6 @@ func (c *Caster) Sub(ctx context.Context, capacity uint) (sCh chan interface{}, 
 		},
 	}:
 	}
-
 	ok = true
 	return
 }
