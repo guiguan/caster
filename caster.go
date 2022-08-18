@@ -55,7 +55,6 @@ func New(ctx context.Context) *Caster {
 	topLoop:
 		for {
 			select {
-
 			case <-ctx.Done():
 				break topLoop
 			case o := <-c.op:
@@ -76,6 +75,7 @@ func New(ctx context.Context) *Caster {
 				case opSub:
 					sIn := o.operand.(subInfo)
 					unSubCh := make(chan struct{})
+					subs[sIn.ch] = unSubCh
 					go func() {
 						select {
 						case <-sIn.ctx.Done():
@@ -83,7 +83,6 @@ func New(ctx context.Context) *Caster {
 						case <-unSubCh:
 						}
 					}()
-					subs[sIn.ch] = unSubCh
 				case opUnsub:
 					sCh := o.operand.(chan interface{})
 					if unSubCh, ok := subs[sCh]; ok {
